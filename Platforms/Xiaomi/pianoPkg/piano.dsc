@@ -71,6 +71,11 @@
   ConfigurationMapLib|pianoPkg/Library/ConfigurationMapLib/ConfigurationMapLib.inf
 
   #
+  # Keys: read-only PMIC access through the SPMI arbiter observer channel
+  #
+  KeypadDeviceLib|pianoPkg/Library/KeypadDeviceLib/KeypadDeviceLib.inf
+
+  #
   # CrabApple boot manager (Common/CrabApple)
   #
   CrabAppleLib|CrabApplePkg/Library/CrabAppleLib/CrabAppleLib.inf
@@ -81,6 +86,12 @@
   gCrabApplePkgTokenSpaceGuid.PcdCrabAppleDebugLevel|0x00400000
 
 [Components]
+  #
+  # Keys (power, volume) as a SimpleTextIn console
+  #
+  SiliciumPkg/Drivers/KeypadDeviceDxe/KeypadDeviceDxe.inf
+  SiliciumPkg/Drivers/KeypadDxe/KeypadDxe.inf
+
   #
   # CrabApple: the application plus the registrar that makes it the first
   # boot option. Pure UEFI software, no hardware access of its own.
