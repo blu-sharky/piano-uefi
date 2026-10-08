@@ -1,0 +1,37 @@
+#
+# Boot Shim Configs
+#
+[boot_shim]
+requires_kernel_header = true
+# Stock ABL loads an uncompressed arm64 Image (image_size != 0) at
+# KernelBaseAddr + text_offset and rejects it after "OKAY" when that lands
+# outside the kernel region (ABL 0x7c1c..0x7d28). Linux uses 0 here; the FD
+# base still reaches the shim's copy loop through FD_BASE.
+text_offset = 0x0
+
+#
+# UEFI FD Configs
+# Same placement as the stock UEFI FD (stock xbl_config memorymap: UEFI_FD
+# 0xA7000000+0x400000; FD_Reserved takes the first 1 MB, as on dodge).
+#
+[uefi_fd]
+base = 0xA7100000
+size = 0x300000
+
+#
+# Android Boot Image Kernel Configs
+# Matches the boot.img form the stock ABL is proven to execute (sibling Linux
+# project): header v4, uncompressed kernel, no appended DTB (v4 takes the DTB
+# from the current slot's vendor_boot + dtbo), empty boot ramdisk.
+#
+[boot_image_kernel]
+kernel_compression = "none"
+append_dtb         = false
+
+#
+# Android Boot Image Configs
+#
+[boot_image]
+header_version = 4
+ramdisk        = "Resources/ramdisk-empty"
+boot_signature = false

@@ -9,3 +9,10 @@ BootShim.elf
 
 Mu-*.*
 *:Zone.Identifier
+
+# ---- piano additions ----
+# python virtualenv (recreate with: python3 -m venv .venv && .venv/bin/python -m pip install -r pip-requirements.txt)
+.venv/
+# unused local copy of the stock DT blob (the committed one lives in
+# Platforms/Xiaomi/pianoPkg/FdtBlob/ together with Source.txt)
+Resources/DTBs/

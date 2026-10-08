@@ -1,0 +1,11 @@
+Device tree blob for the Xiaomi Pad 8 Pro (piano, SM8750).
+
+Source: extracted unmodified from the stock vendor_boot DTB area of the
+author's own device, HyperOS OS3.0.308.0.WPYCNXM, variant vbdtb-04. The
+stock ABL boot chain and the SM8750 closed-source DXE drivers expect the
+vendor device tree, so an unmodified vendor blob is required for
+interoperability.
+
+Copyright Xiaomi Corporation. No license to this file is granted by this
+repository's license; it is distributed for non-commercial interoperability
+testing only and will be removed on request.
