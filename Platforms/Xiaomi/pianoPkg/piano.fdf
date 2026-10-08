@@ -49,6 +49,11 @@ READ_LOCK_STATUS   = TRUE
   # already covers everything U1 needs; bring it back together with SmemDxe.
   #INF SiliciumPkg/Drivers/RamManagerDxe/RamManagerDxe.inf
 
+  # Keys: power and volume through the open keypad framework; the device
+  # library only reads PMIC registers (no closed-source PMIC stack)
+  INF SiliciumPkg/Drivers/KeypadDeviceDxe/KeypadDeviceDxe.inf
+  INF SiliciumPkg/Drivers/KeypadDxe/KeypadDxe.inf
+
   # CrabApple boot manager: registrar + application (first boot option)
   INF CrabApplePkg/Driver/CrabAppleDxe/CrabAppleDxe.inf
   INF CrabApplePkg/Application/CrabApple/CrabApple.inf
