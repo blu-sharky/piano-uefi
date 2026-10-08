@@ -18,7 +18,6 @@
   BaseMemoryLib
   CacheMaintenanceLib
   DebugLib
-  DevicePathLib
   IoLib
   MemoryAllocationLib
   NonDiscoverableDeviceRegistrationLib
@@ -30,9 +29,6 @@
 [Protocols]
   gEdkiiUfsHcPlatformProtocolGuid     ## PRODUCES
   gEfiExtScsiPassThruProtocolGuid     ## NOTIFY
-  gEfiBlockIoProtocolGuid             ## CONSUMES
-  gEfiDevicePathProtocolGuid          ## CONSUMES
-  gEfiPartitionInfoProtocolGuid       ## CONSUMES
 
 [Depex]
   TRUE

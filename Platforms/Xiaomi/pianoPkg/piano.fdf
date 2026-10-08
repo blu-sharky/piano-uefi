@@ -45,12 +45,12 @@ READ_LOCK_STATUS   = TRUE
 
   # RAM Manager — left out while the FV carries no SMEM driver: its
   # RamManagerLib constructor needs gEfiRamPartitionProtocol and asserts
-  # with Not Found otherwise (seen on device, U1 r4). The static memory map
-  # already covers everything U1 needs; bring it back together with SmemDxe.
+  # with Not Found otherwise. The static memory map already covers
+  # everything booted so far; bring it back together with SmemDxe.
   #INF SiliciumPkg/Drivers/RamManagerDxe/RamManagerDxe.inf
 
-  # UFS, stage U3b: generic UFSHCI stack on the controller the bootloader
-  # left running; UfsPlatformDxe refuses every non-read SCSI command
+  # UFS: generic UFSHCI stack on the controller the bootloader left
+  # running; UfsPlatformDxe refuses every non-read SCSI command
   INF pianoPkg/Drivers/UfsPlatformDxe/UfsPlatformDxe.inf
   INF MdeModulePkg/Bus/Pci/NonDiscoverablePciDeviceDxe/NonDiscoverablePciDeviceDxe.inf
   INF MdeModulePkg/Bus/Pci/UfsPciHcDxe/UfsPciHcDxe.inf

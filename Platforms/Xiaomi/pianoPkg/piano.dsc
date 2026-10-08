@@ -93,7 +93,7 @@
 
 [Components]
   #
-  # UFS (U3b): the generic UFSHCI stack takes over the controller the
+  # UFS: the generic UFSHCI stack takes over the controller the
   # bootloader left running; UfsPlatformDxe keeps every LUN read-only
   #
   pianoPkg/Drivers/UfsPlatformDxe/UfsPlatformDxe.inf
@@ -105,11 +105,7 @@
       IoMmuLib|MdeModulePkg/Library/IoMmuLibNull/IoMmuLibNull.inf
   }
   MdeModulePkg/Bus/Pci/UfsPciHcDxe/UfsPciHcDxe.inf
-  MdeModulePkg/Bus/Ufs/UfsPassThruDxe/UfsPassThruDxe.inf {
-    <PcdsFixedAtBuild>
-      # U3 bring-up: its few DEBUG_INFO lines mark the init stages
-      gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x8007EE4F
-  }
+  MdeModulePkg/Bus/Ufs/UfsPassThruDxe/UfsPassThruDxe.inf
   MdeModulePkg/Bus/Scsi/ScsiBusDxe/ScsiBusDxe.inf
   MdeModulePkg/Bus/Scsi/ScsiDiskDxe/ScsiDiskDxe.inf
 
