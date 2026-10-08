@@ -1,7 +1,10 @@
 #include <Uefi.h>
 
 #include <Guid/EventGroup.h>
+#include <IndustryStandard/UfsHci.h>
+#include <Library/BaseLib.h>
 #include <Library/BaseMemoryLib.h>
+#include <Library/CacheMaintenanceLib.h>
 #include <Library/DebugLib.h>
 #include <Library/DevicePathLib.h>
 #include <Library/IoLib.h>
@@ -33,40 +36,40 @@
 // and counted. This also stops PartitionDxe from "restoring" a GPT.
 //
 
-#define UFS_HC_BASE       0x01D84000
-#define UFS_HC_SIZE       0x3000
+#define HCI_BASE       0x01D84000
+#define HCI_SIZE       0x3000
 
-#define UFS_HC_AHIT       0x18
-#define UFS_HC_IS         0x20
-#define UFS_HC_IE         0x24
-#define UFS_HC_STATUS     0x30
-#define UFS_HC_ENABLE     0x34
-#define UFS_HC_UECPA      0x38
-#define UFS_HC_UECDL      0x3C
-#define UFS_HC_UECN       0x40
-#define UFS_HC_UECT       0x44
-#define UFS_HC_UECDME     0x48
-#define UFS_HC_UTRLBA     0x50
-#define UFS_HC_UTRLBAU    0x54
-#define UFS_HC_UTRLDBR    0x58
-#define UFS_HC_UTRLRSR    0x60
-#define UFS_HC_UTMRLDBR   0x78
-#define UFS_HC_UTMRLRSR   0x80
-#define UFS_HC_UICCMD     0x90
-#define UFS_HC_UICARG1    0x94
-#define UFS_HC_UICARG2    0x98
-#define UFS_HC_UICARG3    0x9C
+#define HCI_AHIT       0x18
+#define HCI_IS         0x20
+#define HCI_IE         0x24
+#define HCI_STATUS     0x30
+#define HCI_ENABLE     0x34
+#define HCI_UECPA      0x38
+#define HCI_UECDL      0x3C
+#define HCI_UECN       0x40
+#define HCI_UECT       0x44
+#define HCI_UECDME     0x48
+#define HCI_UTRLBA     0x50
+#define HCI_UTRLBAU    0x54
+#define HCI_UTRLDBR    0x58
+#define HCI_UTRLRSR    0x60
+#define HCI_UTMRLDBR   0x78
+#define HCI_UTMRLRSR   0x80
+#define HCI_UICCMD     0x90
+#define HCI_UICARG1    0x94
+#define HCI_UICARG2    0x98
+#define HCI_UICARG3    0x9C
 
-#define UFS_HC_IS_UHXS          BIT5
-#define UFS_HC_IS_UCCS          BIT10
+#define HCI_IS_UHXS          BIT5
+#define HCI_IS_UCCS          BIT10
 #define UIC_DME_HIBER_ENTER     0x17
 #define UIC_DME_HIBER_EXIT      0x18
 #define UPMCRS_PWR_LOCAL        1
 #define UIC_TIMEOUT_US          100000
 
-#define UFS_HC_STATUS_DP        BIT0
-#define UFS_HC_STATUS_UCRDY     BIT3
-#define UFS_HC_ENABLE_HCE       BIT0
+#define HCI_STATUS_DP        BIT0
+#define HCI_STATUS_UCRDY     BIT3
+#define HCI_ENABLE_HCE       BIT0
 
 #define REPORT_HOLD_US    (15 * 1000 * 1000)
 
@@ -115,28 +118,191 @@ UicHibernateExit (
   UINT32  Upmcrs;
   UINTN   Timeout;
 
-  MmioWrite32 (UFS_HC_BASE + UFS_HC_IS, UFS_HC_IS_UCCS | UFS_HC_IS_UHXS);
-  MmioWrite32 (UFS_HC_BASE + UFS_HC_UICARG1, 0);
-  MmioWrite32 (UFS_HC_BASE + UFS_HC_UICARG2, 0);
-  MmioWrite32 (UFS_HC_BASE + UFS_HC_UICARG3, 0);
-  MmioWrite32 (UFS_HC_BASE + UFS_HC_UICCMD, UIC_DME_HIBER_EXIT);
+  MmioWrite32 (HCI_BASE + HCI_IS, HCI_IS_UCCS | HCI_IS_UHXS);
+  MmioWrite32 (HCI_BASE + HCI_UICARG1, 0);
+  MmioWrite32 (HCI_BASE + HCI_UICARG2, 0);
+  MmioWrite32 (HCI_BASE + HCI_UICARG3, 0);
+  MmioWrite32 (HCI_BASE + HCI_UICCMD, UIC_DME_HIBER_EXIT);
 
   Is = 0;
   for (Timeout = 0; Timeout < UIC_TIMEOUT_US; Timeout++) {
-    Is = MmioRead32 (UFS_HC_BASE + UFS_HC_IS);
-    if ((Is & UFS_HC_IS_UHXS) != 0) {
+    Is = MmioRead32 (HCI_BASE + HCI_IS);
+    if ((Is & HCI_IS_UHXS) != 0) {
       break;
     }
 
     MicroSecondDelay (1);
   }
 
-  Upmcrs = (MmioRead32 (UFS_HC_BASE + UFS_HC_STATUS) >> 8) & 0x7;
+  Upmcrs = (MmioRead32 (HCI_BASE + HCI_STATUS) >> 8) & 0x7;
   DEBUG ((DEBUG_WARN, "UfsPlatform: HIBERN8 exit: IS 0x%08x result 0x%02x UPMCRS %u\n",
-          Is, MmioRead32 (UFS_HC_BASE + UFS_HC_UICARG2) & 0xFF, Upmcrs));
-  MmioWrite32 (UFS_HC_BASE + UFS_HC_IS, UFS_HC_IS_UCCS | UFS_HC_IS_UHXS);
+          Is, MmioRead32 (HCI_BASE + HCI_UICARG2) & 0xFF, Upmcrs));
+  MmioWrite32 (HCI_BASE + HCI_IS, HCI_IS_UCCS | HCI_IS_UHXS);
 
-  return (((Is & UFS_HC_IS_UHXS) != 0) && (Upmcrs == UPMCRS_PWR_LOCAL)) ? EFI_SUCCESS : EFI_DEVICE_ERROR;
+  return (((Is & HCI_IS_UHXS) != 0) && (Upmcrs == UPMCRS_PWR_LOCAL)) ? EFI_SUCCESS : EFI_DEVICE_ERROR;
+}
+
+//
+// A one-slot UTP engine, used only between the HIBERN8 exit and the hand-
+// over, to look at the device power mode and wake the device if the
+// bootloader put it to sleep (START STOP UNIT, as Linux does on resume).
+//
+#define ENGINE_UCD_OFFSET       0x400
+#define ENGINE_RESP_OFFSET      0x200
+#define ENGINE_TIMEOUT_US       1000000
+#define UPIU_QUERY_READ         0x01
+#define UFS_POWER_MODE_ACTIVE   0x11
+#define SCSI_START_STOP_UNIT    0x1B
+
+STATIC UINT8  *mEngine;
+
+STATIC
+EFI_STATUS
+EngineExec (
+  IN UINTN  RequestSize
+  )
+{
+  UTP_TRD  *Trd;
+  UINT64   Ucd;
+  UINTN    Timeout;
+
+  Trd = (UTP_TRD *)mEngine;
+  Ucd = (UINT64)(UINTN)(mEngine + ENGINE_UCD_OFFSET);
+  ZeroMem (Trd, sizeof (*Trd));
+  ZeroMem (mEngine + ENGINE_UCD_OFFSET + ENGINE_RESP_OFFSET, sizeof (UTP_RESPONSE_UPIU));
+  Trd->Ct     = 1;                  // UFS storage
+  Trd->Dd     = 0;                  // no data
+  Trd->Ocs    = 0x0F;               // invalid until the controller writes it
+  Trd->UcdBa  = (UINT32)(Ucd >> 7);
+  Trd->UcdBaU = (UINT32)(Ucd >> 32);
+  Trd->RuO    = ENGINE_RESP_OFFSET / 4;
+  Trd->RuL    = sizeof (UTP_RESPONSE_UPIU) / 4;
+  Trd->PrdtO  = (ENGINE_RESP_OFFSET + sizeof (UTP_RESPONSE_UPIU)) / 4;
+  Trd->PrdtL  = 0;
+
+  WriteBackDataCacheRange (mEngine, EFI_PAGE_SIZE);
+  MmioWrite32 (HCI_BASE + HCI_UTRLDBR, BIT0);
+
+  for (Timeout = 0; Timeout < ENGINE_TIMEOUT_US; Timeout++) {
+    if ((MmioRead32 (HCI_BASE + HCI_UTRLDBR) & BIT0) == 0) {
+      break;
+    }
+
+    MicroSecondDelay (1);
+  }
+
+  InvalidateDataCacheRange (mEngine, EFI_PAGE_SIZE);
+  if (Timeout == ENGINE_TIMEOUT_US) {
+    return EFI_TIMEOUT;
+  }
+
+  return (Trd->Ocs == 0) ? EFI_SUCCESS : EFI_DEVICE_ERROR;
+}
+
+STATIC
+EFI_STATUS
+EngineQueryRead (
+  IN  UINT8   Opcode,
+  IN  UINT8   Idn,
+  OUT UINT32  *Value,
+  OUT UINT8   *QueryResp
+  )
+{
+  UTP_QUERY_REQ_UPIU   *Req;
+  UTP_QUERY_RESP_UPIU  *Resp;
+  EFI_STATUS           Status;
+
+  Req  = (UTP_QUERY_REQ_UPIU *)(mEngine + ENGINE_UCD_OFFSET);
+  Resp = (UTP_QUERY_RESP_UPIU *)(mEngine + ENGINE_UCD_OFFSET + ENGINE_RESP_OFFSET);
+  ZeroMem (Req, sizeof (*Req));
+  Req->TransCode  = 0x16;
+  Req->QueryFunc  = UPIU_QUERY_READ;
+  Req->Tsf.Opcode = Opcode;
+  Req->Tsf.DescId = Idn;
+
+  Status     = EngineExec (sizeof (*Req));
+  *QueryResp = Resp->QueryResp;
+  *Value     = SwapBytes32 (Resp->Tsf.Value);
+  return Status;
+}
+
+STATIC
+EFI_STATUS
+EngineStartStopUnitActive (
+  OUT UINT8  *ScsiStatus
+  )
+{
+  UTP_COMMAND_UPIU   *Cmd;
+  UTP_RESPONSE_UPIU  *Resp;
+  EFI_STATUS         Status;
+
+  Cmd  = (UTP_COMMAND_UPIU *)(mEngine + ENGINE_UCD_OFFSET);
+  Resp = (UTP_RESPONSE_UPIU *)(mEngine + ENGINE_UCD_OFFSET + ENGINE_RESP_OFFSET);
+  ZeroMem (Cmd, sizeof (*Cmd));
+  Cmd->TransCode = 0x01;
+  Cmd->Lun       = UFS_WLUN_UFS_DEV;
+  Cmd->Cdb[0]    = SCSI_START_STOP_UNIT;
+  Cmd->Cdb[4]    = 0x10;            // POWER CONDITION = ACTIVE
+
+  Status      = EngineExec (sizeof (*Cmd));
+  *ScsiStatus = Resp->Status;
+  return Status;
+}
+
+/**
+  Report the device power mode and wake the device if it sleeps.
+  Runs with the bootloader's lists stopped and the link out of HIBERN8.
+**/
+STATIC
+EFI_STATUS
+WakeDevice (
+  VOID
+  )
+{
+  EFI_STATUS  Status;
+  UINT32      Mode;
+  UINT32      DevInit;
+  UINT8       Resp;
+  UINT8       ScsiStatus;
+  UINTN       Try;
+
+  mEngine = AllocateAlignedPages (1, SIZE_4KB);
+  if (mEngine == NULL) {
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  ZeroMem (mEngine, EFI_PAGE_SIZE);
+  MmioWrite32 (HCI_BASE + HCI_UTRLBA, (UINT32)(UINTN)mEngine);
+  MmioWrite32 (HCI_BASE + HCI_UTRLBAU, (UINT32)RShiftU64 ((UINT64)(UINTN)mEngine, 32));
+  MmioWrite32 (HCI_BASE + HCI_UTRLRSR, 1);
+
+  Status = EngineQueryRead (UtpQueryFuncOpcodeRdAttr, UfsAttrCurPowerMode, &Mode, &Resp);
+  DEBUG ((DEBUG_WARN, "UfsPlatform: bCurrentPowerMode 0x%02x (%r, resp 0x%02x)\n", Mode, Status, Resp));
+  EngineQueryRead (UtpQueryFuncOpcodeRdFlag, UfsFlagDevInit, &DevInit, &Resp);
+  DEBUG ((DEBUG_WARN, "UfsPlatform: fDeviceInit %u (resp 0x%02x)\n", DevInit & 0xFF, Resp));
+
+  // Wake unless the device is confirmed active (a sleeping device may
+  // refuse the query itself).
+  if (EFI_ERROR (Status) || (Resp != 0) || (Mode != UFS_POWER_MODE_ACTIVE)) {
+    // A unit attention after the power change is normal; retry like Linux.
+    for (Try = 0; Try < 3; Try++) {
+      Status = EngineStartStopUnitActive (&ScsiStatus);
+      DEBUG ((DEBUG_WARN, "UfsPlatform: START STOP UNIT (ACTIVE): %r, SCSI status 0x%02x\n", Status, ScsiStatus));
+      if (!EFI_ERROR (Status) && (ScsiStatus == 0)) {
+        break;
+      }
+    }
+
+    Status = EngineQueryRead (UtpQueryFuncOpcodeRdAttr, UfsAttrCurPowerMode, &Mode, &Resp);
+    DEBUG ((DEBUG_WARN, "UfsPlatform: bCurrentPowerMode now 0x%02x (%r, resp 0x%02x)\n", Mode, Status, Resp));
+  }
+
+  MmioWrite32 (HCI_BASE + HCI_UTRLRSR, 0);
+  MmioWrite32 (HCI_BASE + HCI_IS, MmioRead32 (HCI_BASE + HCI_IS));
+  FreeAlignedPages (mEngine, 1);
+  mEngine = NULL;
+
+  return EFI_SUCCESS;
 }
 
 STATIC
@@ -148,11 +314,12 @@ UfsPlatformCallback (
   IN OUT VOID                                  *CallbackData
   )
 {
-  UINT32  Status;
+  UINT32      Status;
+  EFI_STATUS  Result;
 
   if (CallbackPhase == EdkiiUfsHcPreLinkStartup) {
     DEBUG ((DEBUG_WARN, "UfsPlatform: lists stopped (RSR %u/%u), link startup skipped\n",
-            MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLRSR), MmioRead32 (UFS_HC_BASE + UFS_HC_UTMRLRSR)));
+            MmioRead32 (HCI_BASE + HCI_UTRLRSR), MmioRead32 (HCI_BASE + HCI_UTMRLRSR)));
   }
 
   if (CallbackPhase != EdkiiUfsHcPostHce) {
@@ -166,40 +333,43 @@ UfsPlatformCallback (
 
   mTakeoverTried = TRUE;
 
-  Status = MmioRead32 (UFS_HC_BASE + UFS_HC_STATUS);
-  if (((MmioRead32 (UFS_HC_BASE + UFS_HC_ENABLE) & UFS_HC_ENABLE_HCE) == 0) ||
-      ((Status & (UFS_HC_STATUS_DP | UFS_HC_STATUS_UCRDY)) != (UFS_HC_STATUS_DP | UFS_HC_STATUS_UCRDY)))
+  Status = MmioRead32 (HCI_BASE + HCI_STATUS);
+  if (((MmioRead32 (HCI_BASE + HCI_ENABLE) & HCI_ENABLE_HCE) == 0) ||
+      ((Status & (HCI_STATUS_DP | HCI_STATUS_UCRDY)) != (HCI_STATUS_DP | HCI_STATUS_UCRDY)))
   {
     DEBUG ((DEBUG_ERROR, "UfsPlatform: controller not left running (HCS 0x%08x), not taking over\n", Status));
     return EFI_NOT_READY;
   }
 
   // Requests still in flight from the bootloader: leave the controller alone.
-  if ((MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLDBR) != 0) || (MmioRead32 (UFS_HC_BASE + UFS_HC_UTMRLDBR) != 0)) {
+  if ((MmioRead32 (HCI_BASE + HCI_UTRLDBR) != 0) || (MmioRead32 (HCI_BASE + HCI_UTMRLDBR) != 0)) {
     DEBUG ((DEBUG_ERROR, "UfsPlatform: bootloader requests outstanding, not taking over\n"));
     return EFI_NOT_READY;
   }
 
   // The list base registers may only change while the lists are stopped.
   DEBUG ((DEBUG_WARN, "UfsPlatform: taking over (old UTRLBA 0x%08x%08x)\n",
-          MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLBAU), MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLBA)));
-  MmioWrite32 (UFS_HC_BASE + UFS_HC_UTRLRSR, 0);
-  MmioWrite32 (UFS_HC_BASE + UFS_HC_UTMRLRSR, 0);
+          MmioRead32 (HCI_BASE + HCI_UTRLBAU), MmioRead32 (HCI_BASE + HCI_UTRLBA)));
+  MmioWrite32 (HCI_BASE + HCI_UTRLRSR, 0);
+  MmioWrite32 (HCI_BASE + HCI_UTMRLRSR, 0);
 
   // The last UIC command the bootloader issued tells the link state.
   DEBUG ((DEBUG_WARN, "UfsPlatform: last UIC 0x%02x args 0x%08x 0x%08x 0x%08x IS 0x%08x IE 0x%08x AHIT 0x%08x\n",
-          MmioRead32 (UFS_HC_BASE + UFS_HC_UICCMD) & 0xFF,
-          MmioRead32 (UFS_HC_BASE + UFS_HC_UICARG1), MmioRead32 (UFS_HC_BASE + UFS_HC_UICARG2),
-          MmioRead32 (UFS_HC_BASE + UFS_HC_UICARG3), MmioRead32 (UFS_HC_BASE + UFS_HC_IS),
-          MmioRead32 (UFS_HC_BASE + UFS_HC_IE), MmioRead32 (UFS_HC_BASE + UFS_HC_AHIT)));
+          MmioRead32 (HCI_BASE + HCI_UICCMD) & 0xFF,
+          MmioRead32 (HCI_BASE + HCI_UICARG1), MmioRead32 (HCI_BASE + HCI_UICARG2),
+          MmioRead32 (HCI_BASE + HCI_UICARG3), MmioRead32 (HCI_BASE + HCI_IS),
+          MmioRead32 (HCI_BASE + HCI_IE), MmioRead32 (HCI_BASE + HCI_AHIT)));
 
-  MmioWrite32 (UFS_HC_BASE + UFS_HC_IS, MmioRead32 (UFS_HC_BASE + UFS_HC_IS));
+  MmioWrite32 (HCI_BASE + HCI_IS, MmioRead32 (HCI_BASE + HCI_IS));
 
-  if ((MmioRead32 (UFS_HC_BASE + UFS_HC_UICCMD) & 0xFF) == UIC_DME_HIBER_ENTER) {
-    return UicHibernateExit ();
+  if ((MmioRead32 (HCI_BASE + HCI_UICCMD) & 0xFF) == UIC_DME_HIBER_ENTER) {
+    Result = UicHibernateExit ();
+    if (EFI_ERROR (Result)) {
+      return Result;
+    }
   }
 
-  return EFI_SUCCESS;
+  return WakeDevice ();
 }
 
 STATIC EDKII_UFS_HC_PLATFORM_PROTOCOL  mUfsHcPlatform = {
@@ -260,7 +430,7 @@ ReadOnlyPassThru (
   if ((Packet != NULL) && (Packet->Cdb != NULL) && (mTracedCommands < TRACED_COMMANDS)) {
     if (mTracedCommands == 0) {
       DEBUG ((DEBUG_WARN, "UfsPlatform: UTRLBA 0x%08x%08x\n",
-              MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLBAU), MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLBA)));
+              MmioRead32 (HCI_BASE + HCI_UTRLBAU), MmioRead32 (HCI_BASE + HCI_UTRLBA)));
     }
 
     mTracedCommands++;
@@ -384,12 +554,12 @@ ReportDisks (
 
   DEBUG ((DEBUG_WARN, "UfsPlatform: UFS stream SMR 0x%08x S2CR 0x%08x\n", mUfsSmr, mUfsS2cr));
   DEBUG ((DEBUG_WARN, "UfsPlatform: HCS 0x%08x IS 0x%08x DBR 0x%08x UIC 0x%02x\n",
-          MmioRead32 (UFS_HC_BASE + UFS_HC_STATUS), MmioRead32 (UFS_HC_BASE + UFS_HC_IS),
-          MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLDBR), MmioRead32 (UFS_HC_BASE + UFS_HC_UICCMD) & 0xFF));
+          MmioRead32 (HCI_BASE + HCI_STATUS), MmioRead32 (HCI_BASE + HCI_IS),
+          MmioRead32 (HCI_BASE + HCI_UTRLDBR), MmioRead32 (HCI_BASE + HCI_UICCMD) & 0xFF));
   DEBUG ((DEBUG_WARN, "UfsPlatform: UECPA 0x%08x DL 0x%08x N 0x%08x T 0x%08x DME 0x%08x\n",
-          MmioRead32 (UFS_HC_BASE + UFS_HC_UECPA), MmioRead32 (UFS_HC_BASE + UFS_HC_UECDL),
-          MmioRead32 (UFS_HC_BASE + UFS_HC_UECN), MmioRead32 (UFS_HC_BASE + UFS_HC_UECT),
-          MmioRead32 (UFS_HC_BASE + UFS_HC_UECDME)));
+          MmioRead32 (HCI_BASE + HCI_UECPA), MmioRead32 (HCI_BASE + HCI_UECDL),
+          MmioRead32 (HCI_BASE + HCI_UECN), MmioRead32 (HCI_BASE + HCI_UECT),
+          MmioRead32 (HCI_BASE + HCI_UECDME)));
   DEBUG ((DEBUG_WARN, "UfsPlatform: %u GPT/MBR partitions, %u non-read commands refused (last 0x%02x)\n",
           PartCount, mRefusedCommands, mLastRefusedOpcode));
 
@@ -530,7 +700,7 @@ UfsPlatformDxeEntry (
   EFI_HANDLE  Handle;
 
   DEBUG ((DEBUG_WARN, "UfsPlatform: HCS 0x%08x HCE 0x%08x\n",
-          MmioRead32 (UFS_HC_BASE + UFS_HC_STATUS), MmioRead32 (UFS_HC_BASE + UFS_HC_ENABLE)));
+          MmioRead32 (HCI_BASE + HCI_STATUS), MmioRead32 (HCI_BASE + HCI_ENABLE)));
 
   // No DMA may start before the UFS stream is routed; without it, leave
   // the controller to whoever comes next.
@@ -558,8 +728,8 @@ UfsPlatformDxeEntry (
              NULL,
              &mUfsHandle,
              1,
-             UFS_HC_BASE,
-             UFS_HC_SIZE
+             HCI_BASE,
+             HCI_SIZE
              );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "UfsPlatform: registering the host controller failed: %r\n", Status));

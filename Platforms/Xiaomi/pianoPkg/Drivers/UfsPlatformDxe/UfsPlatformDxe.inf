@@ -14,7 +14,9 @@
   MdeModulePkg/MdeModulePkg.dec
 
 [LibraryClasses]
+  BaseLib
   BaseMemoryLib
+  CacheMaintenanceLib
   DebugLib
   DevicePathLib
   IoLib
