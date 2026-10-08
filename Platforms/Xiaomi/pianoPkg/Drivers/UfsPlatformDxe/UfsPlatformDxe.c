@@ -51,6 +51,35 @@
 #define UFS_HC_ENABLE_HCE       BIT0
 
 #define REPORT_HOLD_US    (15 * 1000 * 1000)
+
+//
+// U3b4: the first DMA of the takeover (NOP OUT) reset the device. This
+// stage only reports the DMA path state and leaves UFS alone.
+//
+#define UFS_TAKEOVER      0
+
+// GCC branch clocks feeding UFS (Linux gcc-sm8750.c halt_reg), CLK_OFF = bit 31
+#define GCC_BASE                      0x00100000
+#define GCC_UFS_PHY_GDSCR             0x77004
+#define GCC_UFS_PHY_AXI_CBCR          0x77018
+#define GCC_UFS_PHY_AHB_CBCR          0x77028
+#define GCC_UFS_PHY_TX_SYMBOL_0_CBCR  0x7702C
+#define GCC_UFS_PHY_RX_SYMBOL_0_CBCR  0x77030
+#define GCC_UFS_PHY_UNIPRO_CORE_CBCR  0x7706C
+#define GCC_UFS_PHY_ICE_CORE_CBCR     0x7707C
+#define GCC_UFS_PHY_PHY_AUX_CBCR      0x770BC
+#define GCC_UFS_PHY_RX_SYMBOL_1_CBCR  0x770D8
+#define GCC_AGGRE_UFS_PHY_AXI_CBCR    0x770F0
+
+// apps SMMU (MMU-500) and the UFS stream (Linux iommus = <&apps_smmu 0x60 0>)
+#define SMMU_BASE                     0x15000000
+#define SMMU_SCR0                     0x000
+#define SMMU_IDR0                     0x020
+#define SMMU_IDR1                     0x024
+#define SMMU_SMR(n)                   (0x800 + 4 * (n))
+#define SMMU_S2CR(n)                  (0xC00 + 4 * (n))
+#define SMMU_SMR_VALID                BIT31
+#define UFS_STREAM_ID                 0x60
 #define TRACED_COMMANDS   24
 
 STATIC EFI_EXT_SCSI_PASS_THRU_PASSTHRU  mUfsPassThru;
@@ -313,6 +342,59 @@ OnReadyToBoot (
   MicroSecondDelay (REPORT_HOLD_US);
 }
 
+STATIC
+VOID
+ReportDmaPath (
+  VOID
+  )
+{
+  UINT32  Idr0;
+  UINT32  Idr1;
+  UINT32  Smr;
+  UINT32  S2cr;
+  UINT32  Cb;
+  UINTN   PageSize;
+  UINTN   NumPage;
+  UINTN   Index;
+
+  DEBUG ((DEBUG_WARN, "UfsPlatform: GDSC 0x%08x AXI 0x%08x AGGRE_AXI 0x%08x AHB 0x%08x\n",
+          MmioRead32 (GCC_BASE + GCC_UFS_PHY_GDSCR),
+          MmioRead32 (GCC_BASE + GCC_UFS_PHY_AXI_CBCR),
+          MmioRead32 (GCC_BASE + GCC_AGGRE_UFS_PHY_AXI_CBCR),
+          MmioRead32 (GCC_BASE + GCC_UFS_PHY_AHB_CBCR)));
+  DEBUG ((DEBUG_WARN, "UfsPlatform: UNIPRO 0x%08x ICE 0x%08x AUX 0x%08x\n",
+          MmioRead32 (GCC_BASE + GCC_UFS_PHY_UNIPRO_CORE_CBCR),
+          MmioRead32 (GCC_BASE + GCC_UFS_PHY_ICE_CORE_CBCR),
+          MmioRead32 (GCC_BASE + GCC_UFS_PHY_PHY_AUX_CBCR)));
+  DEBUG ((DEBUG_WARN, "UfsPlatform: TX0 0x%08x RX0 0x%08x RX1 0x%08x (bit31 = clock off)\n",
+          MmioRead32 (GCC_BASE + GCC_UFS_PHY_TX_SYMBOL_0_CBCR),
+          MmioRead32 (GCC_BASE + GCC_UFS_PHY_RX_SYMBOL_0_CBCR),
+          MmioRead32 (GCC_BASE + GCC_UFS_PHY_RX_SYMBOL_1_CBCR)));
+
+  Idr0     = MmioRead32 (SMMU_BASE + SMMU_IDR0);
+  Idr1     = MmioRead32 (SMMU_BASE + SMMU_IDR1);
+  PageSize = ((Idr1 & BIT31) != 0) ? SIZE_64KB : SIZE_4KB;
+  NumPage  = (UINTN)1 << (((Idr1 >> 28) & 0x7) + 1);
+  DEBUG ((DEBUG_WARN, "UfsPlatform: SMMU sCR0 0x%08x IDR0 0x%08x IDR1 0x%08x\n",
+          MmioRead32 (SMMU_BASE + SMMU_SCR0), Idr0, Idr1));
+
+  for (Index = 0; Index < (Idr0 & 0xFF); Index++) {
+    Smr = MmioRead32 (SMMU_BASE + SMMU_SMR (Index));
+    if (((Smr & SMMU_SMR_VALID) == 0) ||
+        (((Smr ^ UFS_STREAM_ID) & ~(Smr >> 16) & 0x7FFF) != 0))
+    {
+      continue;
+    }
+
+    S2cr = MmioRead32 (SMMU_BASE + SMMU_S2CR (Index));
+    Cb   = S2cr & 0xFF;
+    DEBUG ((DEBUG_WARN, "UfsPlatform: SMR%u 0x%08x S2CR 0x%08x CBAR%u 0x%08x CB SCTLR 0x%08x\n",
+            Index, Smr, S2cr, Cb,
+            MmioRead32 (SMMU_BASE + PageSize + 4 * Cb),
+            MmioRead32 (SMMU_BASE + (NumPage + Cb) * PageSize)));
+  }
+}
+
 EFI_STATUS
 EFIAPI
 UfsPlatformDxeEntry (
@@ -326,6 +408,13 @@ UfsPlatformDxeEntry (
 
   DEBUG ((DEBUG_WARN, "UfsPlatform: HCS 0x%08x HCE 0x%08x\n",
           MmioRead32 (UFS_HC_BASE + UFS_HC_STATUS), MmioRead32 (UFS_HC_BASE + UFS_HC_ENABLE)));
+
+  if (!UFS_TAKEOVER) {
+    ReportDmaPath ();
+    DEBUG ((DEBUG_WARN, "UfsPlatform: takeover disabled in this build; holding 15 s\n"));
+    MicroSecondDelay (REPORT_HOLD_US);
+    return EFI_SUCCESS;
+  }
 
   // The guard goes in first, so no pass-through instance can exist unguarded.
   EfiCreateProtocolNotifyEvent (&gEfiExtScsiPassThruProtocolGuid, TPL_NOTIFY, OnExtScsiPassThru, NULL, &mPassThruRegistration);
