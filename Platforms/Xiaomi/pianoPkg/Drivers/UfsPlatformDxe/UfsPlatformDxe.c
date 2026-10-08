@@ -51,11 +51,13 @@
 #define UFS_HC_ENABLE_HCE       BIT0
 
 #define REPORT_HOLD_US    (15 * 1000 * 1000)
+#define TRACED_COMMANDS   24
 
 STATIC EFI_EXT_SCSI_PASS_THRU_PASSTHRU  mUfsPassThru;
 STATIC VOID                             *mPassThruRegistration;
 STATIC UINTN                            mRefusedCommands;
 STATIC UINT8                            mLastRefusedOpcode;
+STATIC UINTN                            mTracedCommands;
 STATIC EFI_HANDLE                       mUfsHandle;
 
 STATIC
@@ -68,6 +70,11 @@ UfsPlatformCallback (
   )
 {
   UINT32  Status;
+
+  if (CallbackPhase == EdkiiUfsHcPreLinkStartup) {
+    DEBUG ((DEBUG_WARN, "UfsPlatform: lists stopped (RSR %u/%u), link startup skipped\n",
+            MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLRSR), MmioRead32 (UFS_HC_BASE + UFS_HC_UTMRLRSR)));
+  }
 
   if (CallbackPhase != EdkiiUfsHcPostHce) {
     return EFI_SUCCESS;
@@ -149,6 +156,17 @@ ReadOnlyPassThru (
     mRefusedCommands++;
     mLastRefusedOpcode = ((UINT8 *)Packet->Cdb)[0];
     return EFI_UNSUPPORTED;
+  }
+
+  // Trace the first commands: the last line on the panel is the one in flight.
+  if ((Packet != NULL) && (Packet->Cdb != NULL) && (mTracedCommands < TRACED_COMMANDS)) {
+    if (mTracedCommands == 0) {
+      DEBUG ((DEBUG_WARN, "UfsPlatform: UTRLBA 0x%08x%08x\n",
+              MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLBAU), MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLBA)));
+    }
+
+    mTracedCommands++;
+    DEBUG ((DEBUG_WARN, "UfsPlatform: cmd 0x%02x LUN 0x%lx\n", ((UINT8 *)Packet->Cdb)[0], Lun));
   }
 
   return mUfsPassThru (This, Target, Lun, Packet, Event);
