@@ -126,7 +126,8 @@ def write_header_v3_and_above(args):
                            args.cmdline))
     if args.header_version >= 4:
         # The signature used to verify boot image v4.
-        args.output.write(pack('I', BOOT_IMAGE_V4_SIGNATURE_SIZE))
+        args.output.write(pack('I', 0 if args.no_boot_signature
+                                    else BOOT_IMAGE_V4_SIGNATURE_SIZE))
     pad_file(args.output, BOOT_IMAGE_HEADER_V3_PAGESIZE)
 
 
@@ -541,6 +542,8 @@ def parse_cmdline():
                         help='path to RSA private key file')
     parser.add_argument('--gki_signing_signature_args',
                         help='other hash arguments passed to avbtool')
+    parser.add_argument('--no_boot_signature', action='store_true',
+                        help='v4: write signature_size 0 and no boot signature')
     parser.add_argument('--gki_signing_avbtool_path',
                         help='path to avbtool for boot signature generation')
     parser.add_argument('--vendor_boot', type=FileType('wb'),
@@ -630,7 +633,7 @@ def write_data(args, pagesize):
         write_padded_file(args.output, args.recovery_dtbo, pagesize)
     if args.header_version == 2:
         write_padded_file(args.output, args.dtb, pagesize)
-    if args.header_version >= 4:
+    if args.header_version >= 4 and not args.no_boot_signature:
         add_boot_image_signature(args, pagesize)
 
 

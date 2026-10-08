@@ -196,6 +196,11 @@ def compile_boot_shim (boot_shim_config: dict, fd_config: dict) -> bool:
         f"FD_SIZE={fd_size}"
     ]
 
+    # Override the Kernel Header Text Offset if Requested
+    text_offset = boot_shim_config.get ("text_offset")
+    if text_offset is not None:
+        cmd.append (f"KERNEL_TEXT_OFFSET={hex (text_offset)}")
+
     # Compile Boot Shim
     return subprocess.run (cmd, cwd=BOOT_SHIM_PATH).returncode == 0
 
@@ -328,7 +333,7 @@ def create_android_boot_img (ctx: BuildContext, image_kernel_config: dict, image
     cmd = [
         sys.executable, str (mkbootimg),
         "--kernel",     str (android_kernel),
-        "--ramdisk",    "Resources/ramdisk",
+        "--ramdisk",    image_config.get ("ramdisk", "Resources/ramdisk"),
         "-o",           output_file_name
     ]
 
@@ -356,6 +361,10 @@ def create_android_boot_img (ctx: BuildContext, image_kernel_config: dict, image
         if value:
             cmd.append (option)
             cmd.append (str (value))
+
+    # Omit the v4 Boot Signature if Requested
+    if image_config.get ("boot_signature", True) is False:
+        cmd.append ("--no_boot_signature")
 
     # Execute mkbootimg Command
     return subprocess.run (cmd).returncode == 0
