@@ -53,6 +53,12 @@ READ_LOCK_STATUS   = TRUE
   INF CrabApplePkg/Driver/CrabAppleDxe/CrabAppleDxe.inf
   INF CrabApplePkg/Application/CrabApple/CrabApple.inf
 
+  # Form browser. BDS repairs controllers through Driver Health before every
+  # boot option (UefiBootManagerLib BmRepairAllControllers) and asserts when
+  # gEfiFormBrowser2ProtocolGuid is missing. Other devices get it from
+  # Extra.fdf.inc; only the browser itself is needed here.
+  INF MdeModulePkg/Universal/SetupBrowserDxe/SetupBrowserDxe.inf
+
   # SmBios
   INF MdeModulePkg/Universal/SmbiosDxe/SmbiosDxe.inf
   INF SiliciumPkg/Drivers/SmBiosTableDxe/SmBiosTableDxe.inf
