@@ -4,6 +4,10 @@ CC                = clang
 CFLAGS            = --target=$(TARGET)
 OBJCOPY           = llvm-objcopy
 
+ifneq ($(KERNEL_TEXT_OFFSET),)
+CFLAGS            += -DKERNEL_TEXT_OFFSET=$(KERNEL_TEXT_OFFSET)
+endif
+
 all: BootShim.elf BootShim.bin
 
 BootShim.bin: BootShim.elf

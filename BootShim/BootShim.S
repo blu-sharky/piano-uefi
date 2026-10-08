@@ -2,9 +2,13 @@ _Head:
   adr   x1, _Payload    /* Set _Entry address */
   b     _Start          /* Jump to the real code */
 
+#ifndef KERNEL_TEXT_OFFSET
+#define KERNEL_TEXT_OFFSET FD_BASE
+#endif
+
 #if REQUIRES_KERNEL_HEADER == 1
 _StackBase:
-  .quad FD_BASE         /* Text Offset */
+  .quad KERNEL_TEXT_OFFSET /* Text Offset */
 
 _StackSize:
   .quad FD_SIZE         /* Image Size */
