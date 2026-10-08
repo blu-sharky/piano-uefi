@@ -33,6 +33,7 @@ class CommonPlatform ():
         "Platforms/Xiaomi",
         "Common/Mu",
         "Common/Mu_OEM_Sample",
+        "Common/CrabApple",
         "Mu_Basecore",
         "Silicon/Qualcomm",
         "Silicon/Silicium",
@@ -59,6 +60,8 @@ class SettingsManager (UpdateSettingsManager, SetupSettingsManager, PrEvalSettin
             RequiredSubmodule ("Binaries", True),
             RequiredSubmodule ("Common/Mu", True),
             RequiredSubmodule ("Common/Mu_OEM_Sample", True),
+            # Only CrabApplePkg is used; its own Mu_Basecore is not needed.
+            RequiredSubmodule ("Common/CrabApple", False),
             RequiredSubmodule ("Mu_Basecore", True),
             RequiredSubmodule ("Silicium-ACPI", True),
             RequiredSubmodule ("Silicon/Silicium/OpensslPkg/Library/OpensslLib/openssl", True)
