@@ -49,6 +49,10 @@ READ_LOCK_STATUS   = TRUE
   # already covers everything U1 needs; bring it back together with SmemDxe.
   #INF SiliciumPkg/Drivers/RamManagerDxe/RamManagerDxe.inf
 
+  # CrabApple boot manager: registrar + application (first boot option)
+  INF CrabApplePkg/Driver/CrabAppleDxe/CrabAppleDxe.inf
+  INF CrabApplePkg/Application/CrabApple/CrabApple.inf
+
   # SmBios
   INF MdeModulePkg/Universal/SmbiosDxe/SmbiosDxe.inf
   INF SiliciumPkg/Drivers/SmBiosTableDxe/SmBiosTableDxe.inf

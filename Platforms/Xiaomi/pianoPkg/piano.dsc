@@ -69,3 +69,21 @@
   # QCOM Libraries
   #
   ConfigurationMapLib|pianoPkg/Library/ConfigurationMapLib/ConfigurationMapLib.inf
+
+  #
+  # CrabApple boot manager (Common/CrabApple)
+  #
+  CrabAppleLib|CrabApplePkg/Library/CrabAppleLib/CrabAppleLib.inf
+
+[PcdsFixedAtBuild]
+  # DEBUG output is drawn on the same framebuffer as the CrabApple menu;
+  # keep CrabApple's own log lines below the printed levels.
+  gCrabApplePkgTokenSpaceGuid.PcdCrabAppleDebugLevel|0x00400000
+
+[Components]
+  #
+  # CrabApple: the application plus the registrar that makes it the first
+  # boot option. Pure UEFI software, no hardware access of its own.
+  #
+  CrabApplePkg/Application/CrabApple/CrabApple.inf
+  CrabApplePkg/Driver/CrabAppleDxe/CrabAppleDxe.inf
