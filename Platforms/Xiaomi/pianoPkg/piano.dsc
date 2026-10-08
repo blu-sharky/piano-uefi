@@ -87,6 +87,11 @@
 
 [Components]
   #
+  # UFS (U3a: probe only, reads the host controller state)
+  #
+  pianoPkg/Drivers/UfsPlatformDxe/UfsPlatformDxe.inf
+
+  #
   # Keys (power, volume) as a SimpleTextIn console
   #
   SiliciumPkg/Drivers/KeypadDeviceDxe/KeypadDeviceDxe.inf
