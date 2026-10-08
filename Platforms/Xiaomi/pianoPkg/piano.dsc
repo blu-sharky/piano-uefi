@@ -97,7 +97,13 @@
   # bootloader left running; UfsPlatformDxe keeps every LUN read-only
   #
   pianoPkg/Drivers/UfsPlatformDxe/UfsPlatformDxe.inf
-  MdeModulePkg/Bus/Pci/NonDiscoverablePciDeviceDxe/NonDiscoverablePciDeviceDxe.inf
+  MdeModulePkg/Bus/Pci/NonDiscoverablePciDeviceDxe/NonDiscoverablePciDeviceDxe.inf {
+    <LibraryClasses>
+      # The shared IoMmuLib depends on gEdkiiIoMmuProtocolGuid, which nothing
+      # produces here, so the driver would never be dispatched. UFS DMA needs
+      # no translation: its SMMU stream is routed to a bypass context bank.
+      IoMmuLib|MdeModulePkg/Library/IoMmuLibNull/IoMmuLibNull.inf
+  }
   MdeModulePkg/Bus/Pci/UfsPciHcDxe/UfsPciHcDxe.inf
   MdeModulePkg/Bus/Ufs/UfsPassThruDxe/UfsPassThruDxe.inf
   MdeModulePkg/Bus/Scsi/ScsiBusDxe/ScsiBusDxe.inf
