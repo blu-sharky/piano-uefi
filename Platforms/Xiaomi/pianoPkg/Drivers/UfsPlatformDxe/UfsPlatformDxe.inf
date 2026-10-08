@@ -1,0 +1,22 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = UfsPlatformDxe
+  FILE_GUID                      = 386D468A-23FE-4A32-95AB-80466802DC8D
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = UfsPlatformDxeEntry
+
+[Sources]
+  UfsPlatformDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  DebugLib
+  IoLib
+  TimerLib
+  UefiDriverEntryPoint
+
+[Depex]
+  TRUE
