@@ -53,32 +53,24 @@
 #define REPORT_HOLD_US    (15 * 1000 * 1000)
 
 //
-// U3b4: the first DMA of the takeover (NOP OUT) reset the device. This
-// stage only reports the DMA path state and leaves UFS alone.
+// apps SMMU (MMU-500). Unmatched streams fault (sCR0.USFCFG) and a fault
+// resets the device, and at this point nothing maps the UFS stream (Linux:
+// iommus = <&apps_smmu 0x60 0>). The hypervisor turns S2CR BYPASS into
+// FAULT, so bypass is done the way Linux arm-smmu-qcom does it: the last
+// context bank with translation off (SCTLR.M = 0, CBAR type S1 translate /
+// S2 bypass), and a stream match entry routing 0x60 to it.
 //
-#define UFS_TAKEOVER      0
-
-// GCC branch clocks feeding UFS (Linux gcc-sm8750.c halt_reg), CLK_OFF = bit 31
-#define GCC_BASE                      0x00100000
-#define GCC_UFS_PHY_GDSCR             0x77004
-#define GCC_UFS_PHY_AXI_CBCR          0x77018
-#define GCC_UFS_PHY_AHB_CBCR          0x77028
-#define GCC_UFS_PHY_TX_SYMBOL_0_CBCR  0x7702C
-#define GCC_UFS_PHY_RX_SYMBOL_0_CBCR  0x77030
-#define GCC_UFS_PHY_UNIPRO_CORE_CBCR  0x7706C
-#define GCC_UFS_PHY_ICE_CORE_CBCR     0x7707C
-#define GCC_UFS_PHY_PHY_AUX_CBCR      0x770BC
-#define GCC_UFS_PHY_RX_SYMBOL_1_CBCR  0x770D8
-#define GCC_AGGRE_UFS_PHY_AXI_CBCR    0x770F0
-
-// apps SMMU (MMU-500) and the UFS stream (Linux iommus = <&apps_smmu 0x60 0>)
 #define SMMU_BASE                     0x15000000
-#define SMMU_SCR0                     0x000
 #define SMMU_IDR0                     0x020
 #define SMMU_IDR1                     0x024
 #define SMMU_SMR(n)                   (0x800 + 4 * (n))
 #define SMMU_S2CR(n)                  (0xC00 + 4 * (n))
 #define SMMU_SMR_VALID                BIT31
+#define SMMU_S2CR_TYPE_MASK           (BIT17 | BIT16)
+#define SMMU_S2CR_CBNDX_MASK          0xFF
+#define SMMU_CBAR_TYPE_S1_S2_BYPASS   BIT16
+#define SMMU_CB_SCTLR_M               BIT0
+#define SMMU_MAX_SMR                  128
 #define UFS_STREAM_ID                 0x60
 #define TRACED_COMMANDS   24
 
@@ -87,6 +79,8 @@ STATIC VOID                             *mPassThruRegistration;
 STATIC UINTN                            mRefusedCommands;
 STATIC UINT8                            mLastRefusedOpcode;
 STATIC UINTN                            mTracedCommands;
+STATIC UINT32                           mUfsSmr;
+STATIC UINT32                           mUfsS2cr;
 STATIC EFI_HANDLE                       mUfsHandle;
 
 STATIC
@@ -313,6 +307,7 @@ ReportDisks (
             Info->Info.Gpt.StartingLBA, Info->Info.Gpt.EndingLBA));
   }
 
+  DEBUG ((DEBUG_WARN, "UfsPlatform: UFS stream SMR 0x%08x S2CR 0x%08x\n", mUfsSmr, mUfsS2cr));
   DEBUG ((DEBUG_WARN, "UfsPlatform: %u GPT/MBR partitions, %u non-read commands refused (last 0x%02x)\n",
           PartCount, mRefusedCommands, mLastRefusedOpcode));
 
@@ -343,56 +338,102 @@ OnReadyToBoot (
 }
 
 STATIC
-VOID
-ReportDmaPath (
+BOOLEAN
+SmrMatches (
+  IN UINT32  Smr,
+  IN UINT32  StreamId
+  )
+{
+  return (BOOLEAN)(((Smr & SMMU_SMR_VALID) != 0) &&
+                   ((((Smr ^ StreamId) & ~(Smr >> 16)) & 0x7FFF) == 0));
+}
+
+/**
+  Route the UFS stream through a translation-off context bank.
+
+  @retval EFI_SUCCESS  The stream is routed (now or already).
+  @retval others       Nothing usable; nothing was written.
+**/
+STATIC
+EFI_STATUS
+MapUfsStream (
   VOID
   )
 {
-  UINT32  Idr0;
+  UINTN   PageSize;
+  UINTN   NumPage;
+  UINTN   NumSmr;
+  UINTN   Cb;
+  UINTN   CbBase;
+  UINTN   Index;
+  UINTN   Free;
+  UINTN   Valid;
   UINT32  Idr1;
   UINT32  Smr;
   UINT32  S2cr;
-  UINT32  Cb;
-  UINTN   PageSize;
-  UINTN   NumPage;
-  UINTN   Index;
 
-  DEBUG ((DEBUG_WARN, "UfsPlatform: GDSC 0x%08x AXI 0x%08x AGGRE_AXI 0x%08x AHB 0x%08x\n",
-          MmioRead32 (GCC_BASE + GCC_UFS_PHY_GDSCR),
-          MmioRead32 (GCC_BASE + GCC_UFS_PHY_AXI_CBCR),
-          MmioRead32 (GCC_BASE + GCC_AGGRE_UFS_PHY_AXI_CBCR),
-          MmioRead32 (GCC_BASE + GCC_UFS_PHY_AHB_CBCR)));
-  DEBUG ((DEBUG_WARN, "UfsPlatform: UNIPRO 0x%08x ICE 0x%08x AUX 0x%08x\n",
-          MmioRead32 (GCC_BASE + GCC_UFS_PHY_UNIPRO_CORE_CBCR),
-          MmioRead32 (GCC_BASE + GCC_UFS_PHY_ICE_CORE_CBCR),
-          MmioRead32 (GCC_BASE + GCC_UFS_PHY_PHY_AUX_CBCR)));
-  DEBUG ((DEBUG_WARN, "UfsPlatform: TX0 0x%08x RX0 0x%08x RX1 0x%08x (bit31 = clock off)\n",
-          MmioRead32 (GCC_BASE + GCC_UFS_PHY_TX_SYMBOL_0_CBCR),
-          MmioRead32 (GCC_BASE + GCC_UFS_PHY_RX_SYMBOL_0_CBCR),
-          MmioRead32 (GCC_BASE + GCC_UFS_PHY_RX_SYMBOL_1_CBCR)));
-
-  Idr0     = MmioRead32 (SMMU_BASE + SMMU_IDR0);
   Idr1     = MmioRead32 (SMMU_BASE + SMMU_IDR1);
   PageSize = ((Idr1 & BIT31) != 0) ? SIZE_64KB : SIZE_4KB;
   NumPage  = (UINTN)1 << (((Idr1 >> 28) & 0x7) + 1);
-  DEBUG ((DEBUG_WARN, "UfsPlatform: SMMU sCR0 0x%08x IDR0 0x%08x IDR1 0x%08x\n",
-          MmioRead32 (SMMU_BASE + SMMU_SCR0), Idr0, Idr1));
+  NumSmr   = MIN (MmioRead32 (SMMU_BASE + SMMU_IDR0) & 0xFF, SMMU_MAX_SMR);
+  Cb       = (Idr1 & 0xFF) - 1;
+  CbBase   = SMMU_BASE + (NumPage + Cb) * PageSize;
+  Free     = MAX_UINTN;
+  Valid    = 0;
 
-  for (Index = 0; Index < (Idr0 & 0xFF); Index++) {
-    Smr = MmioRead32 (SMMU_BASE + SMMU_SMR (Index));
-    if (((Smr & SMMU_SMR_VALID) == 0) ||
-        (((Smr ^ UFS_STREAM_ID) & ~(Smr >> 16) & 0x7FFF) != 0))
-    {
+  for (Index = 0; Index < NumSmr; Index++) {
+    Smr  = MmioRead32 (SMMU_BASE + SMMU_SMR (Index));
+    S2cr = MmioRead32 (SMMU_BASE + SMMU_S2CR (Index));
+    if ((Smr & SMMU_SMR_VALID) == 0) {
+      if (Free == MAX_UINTN) {
+        Free = Index;
+      }
+
       continue;
     }
 
-    S2cr = MmioRead32 (SMMU_BASE + SMMU_S2CR (Index));
-    Cb   = S2cr & 0xFF;
-    DEBUG ((DEBUG_WARN, "UfsPlatform: SMR%u 0x%08x S2CR 0x%08x CBAR%u 0x%08x CB SCTLR 0x%08x\n",
-            Index, Smr, S2cr, Cb,
-            MmioRead32 (SMMU_BASE + PageSize + 4 * Cb),
-            MmioRead32 (SMMU_BASE + (NumPage + Cb) * PageSize)));
+    Valid++;
+    if (SmrMatches (Smr, UFS_STREAM_ID)) {
+      DEBUG ((DEBUG_WARN, "UfsPlatform: stream 0x%x already mapped: SMR%u 0x%08x S2CR 0x%08x\n", UFS_STREAM_ID, Index, Smr, S2cr));
+      mUfsSmr  = Smr;
+      mUfsS2cr = S2cr;
+      return EFI_SUCCESS;
+    }
+
+    if ((S2cr & SMMU_S2CR_CBNDX_MASK) == Cb) {
+      DEBUG ((DEBUG_ERROR, "UfsPlatform: CB%u already used by SMR%u, not mapping\n", Cb, Index));
+      return EFI_ACCESS_DENIED;
+    }
   }
+
+  DEBUG ((DEBUG_WARN, "UfsPlatform: %u/%u SMRs valid; CB%u SCTLR 0x%08x CBAR 0x%08x\n",
+          Valid, NumSmr, Cb, MmioRead32 (CbBase), MmioRead32 (SMMU_BASE + PageSize + 4 * Cb)));
+
+  if ((Free == MAX_UINTN) || ((MmioRead32 (CbBase) & SMMU_CB_SCTLR_M) != 0)) {
+    DEBUG ((DEBUG_ERROR, "UfsPlatform: no free SMR or CB%u in use, not mapping\n", Cb));
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  // Same order as Linux: context bank first, then S2CR, then SMR.
+  MmioWrite32 (CbBase, 0);
+  MmioWrite32 (SMMU_BASE + PageSize + 4 * Cb, SMMU_CBAR_TYPE_S1_S2_BYPASS);
+  MmioWrite32 (SMMU_BASE + SMMU_S2CR (Free), (UINT32)Cb);
+  MmioWrite32 (SMMU_BASE + SMMU_SMR (Free), SMMU_SMR_VALID | UFS_STREAM_ID);
+
+  Smr      = MmioRead32 (SMMU_BASE + SMMU_SMR (Free));
+  S2cr     = MmioRead32 (SMMU_BASE + SMMU_S2CR (Free));
+  mUfsSmr  = Smr;
+  mUfsS2cr = S2cr;
+  DEBUG ((DEBUG_WARN, "UfsPlatform: stream 0x%x -> SMR%u 0x%08x S2CR 0x%08x CB%u\n", UFS_STREAM_ID, Free, Smr, S2cr, Cb));
+
+  if (!SmrMatches (Smr, UFS_STREAM_ID) || ((S2cr & SMMU_S2CR_TYPE_MASK) != 0) ||
+      ((S2cr & SMMU_S2CR_CBNDX_MASK) != Cb))
+  {
+    DEBUG ((DEBUG_ERROR, "UfsPlatform: SMMU did not take the mapping\n"));
+    return EFI_DEVICE_ERROR;
+  }
+
+  return EFI_SUCCESS;
 }
 
 EFI_STATUS
@@ -409,11 +450,13 @@ UfsPlatformDxeEntry (
   DEBUG ((DEBUG_WARN, "UfsPlatform: HCS 0x%08x HCE 0x%08x\n",
           MmioRead32 (UFS_HC_BASE + UFS_HC_STATUS), MmioRead32 (UFS_HC_BASE + UFS_HC_ENABLE)));
 
-  if (!UFS_TAKEOVER) {
-    ReportDmaPath ();
-    DEBUG ((DEBUG_WARN, "UfsPlatform: takeover disabled in this build; holding 15 s\n"));
+  // No DMA may start before the UFS stream is routed; without it, leave
+  // the controller to whoever comes next.
+  Status = MapUfsStream ();
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_WARN, "UfsPlatform: UFS left alone (%r); holding 15 s\n", Status));
     MicroSecondDelay (REPORT_HOLD_US);
-    return EFI_SUCCESS;
+    return Status;
   }
 
   // The guard goes in first, so no pass-through instance can exist unguarded.

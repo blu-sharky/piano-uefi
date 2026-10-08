@@ -58,9 +58,6 @@ gMemoryDescriptor[] = {
 
   // Register Regions (same SoC as dodge; TLMM trimmed to the verified-readable
   // window 0x0f100000..0x0f202000 — reads outside it reset the device)
-  // Global clock controller (Linux sm8750.dtsi gcc reg); the stock UEFI maps
-  // clock registers on demand. Read here to check the UFS DMA path.
-  {"GCC",               0x00100000, 0x001F5000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"IPC_ROUTER_TOP",    0x00400000, 0x00100000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"SECURITY_CONTROL",  0x00780000, 0x00007000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"QUP",               0x00800000, 0x00300000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
