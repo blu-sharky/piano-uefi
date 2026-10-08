@@ -1,7 +1,7 @@
   #
-  # Minimal first-pass DXE set: open-source components only.
-  # No Binaries/ (piano stock DXE extraction is a later stage),
-  # no DisplayDxe (SimpleFb on the splash framebuffer instead),
+  # Minimal first-pass DXE set: open-source components only,
+  # plus the SoC-generic SM8750 SMEM binary (U7).
+  # No DisplayDxe (SimpleFb on the splash framebuffer instead),
   # no UFS / Buttons / USB / Clock — added one hardware class per stage (U2/U3…).
   #
   INF MdeModulePkg/Core/Dxe/DxeMain.inf
@@ -43,3 +43,9 @@
 !else
   INF SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
 !endif
+
+  # SMEM (SoC-generic SM8750 binary from Binaries/9707f): provides
+  # gEfiRamPartitionProtocol for RamManagerLib. Listed before RamManagerDxe
+  # (which follows the DXE.inc include in the FDF) so the dispatcher runs it
+  # first; its depex is TRUE, so FV order decides.
+  INF Binaries/9707f/QcomPkg/Drivers/SmemDxe/SmemDxe.inf

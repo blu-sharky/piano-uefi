@@ -43,11 +43,10 @@ READ_LOCK_STATUS   = TRUE
   !include Include/APRIORI.inc
   !include Include/DXE.inc
 
-  # RAM Manager — left out while the FV carries no SMEM driver: its
-  # RamManagerLib constructor needs gEfiRamPartitionProtocol and asserts
-  # with Not Found otherwise (seen on device, U1 r4). The static memory map
-  # already covers everything U1 needs; bring it back together with SmemDxe.
-  #INF SiliciumPkg/Drivers/RamManagerDxe/RamManagerDxe.inf
+  # RAM Manager — restored together with SmemDxe (DXE.inc, which precedes
+  # this entry, installs gEfiRamPartitionProtocol before the dispatcher
+  # reaches this file, so the RamManagerLib constructor finds the protocol).
+  INF SiliciumPkg/Drivers/RamManagerDxe/RamManagerDxe.inf
 
   # SmBios
   INF MdeModulePkg/Universal/SmbiosDxe/SmbiosDxe.inf
