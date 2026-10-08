@@ -49,8 +49,14 @@ READ_LOCK_STATUS   = TRUE
   # already covers everything U1 needs; bring it back together with SmemDxe.
   #INF SiliciumPkg/Drivers/RamManagerDxe/RamManagerDxe.inf
 
-  # UFS, stage U3a: reads the host controller state left by the bootloader
+  # UFS, stage U3b: generic UFSHCI stack on the controller the bootloader
+  # left running; UfsPlatformDxe refuses every non-read SCSI command
   INF pianoPkg/Drivers/UfsPlatformDxe/UfsPlatformDxe.inf
+  INF MdeModulePkg/Bus/Pci/NonDiscoverablePciDeviceDxe/NonDiscoverablePciDeviceDxe.inf
+  INF MdeModulePkg/Bus/Pci/UfsPciHcDxe/UfsPciHcDxe.inf
+  INF MdeModulePkg/Bus/Ufs/UfsPassThruDxe/UfsPassThruDxe.inf
+  INF MdeModulePkg/Bus/Scsi/ScsiBusDxe/ScsiBusDxe.inf
+  INF MdeModulePkg/Bus/Scsi/ScsiDiskDxe/ScsiDiskDxe.inf
 
   # Keys: power and volume through the open keypad framework; the device
   # library only reads PMIC registers (no closed-source PMIC stack)

@@ -11,12 +11,26 @@
 
 [Packages]
   MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
 
 [LibraryClasses]
+  BaseMemoryLib
   DebugLib
+  DevicePathLib
   IoLib
+  MemoryAllocationLib
+  NonDiscoverableDeviceRegistrationLib
   TimerLib
+  UefiBootServicesTableLib
   UefiDriverEntryPoint
+  UefiLib
+
+[Protocols]
+  gEdkiiUfsHcPlatformProtocolGuid     ## PRODUCES
+  gEfiExtScsiPassThruProtocolGuid     ## NOTIFY
+  gEfiBlockIoProtocolGuid             ## CONSUMES
+  gEfiDevicePathProtocolGuid          ## CONSUMES
+  gEfiPartitionInfoProtocolGuid       ## CONSUMES
 
 [Depex]
   TRUE

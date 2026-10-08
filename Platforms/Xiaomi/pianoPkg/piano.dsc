@@ -76,6 +76,12 @@
   KeypadDeviceLib|pianoPkg/Library/KeypadDeviceLib/KeypadDeviceLib.inf
 
   #
+  # UFS host controller registration (non-discoverable MMIO device)
+  #
+  NonDiscoverableDeviceRegistrationLib|MdeModulePkg/Library/NonDiscoverableDeviceRegistrationLib/NonDiscoverableDeviceRegistrationLib.inf
+  UefiScsiLib|MdePkg/Library/UefiScsiLib/UefiScsiLib.inf
+
+  #
   # CrabApple boot manager (Common/CrabApple)
   #
   CrabAppleLib|CrabApplePkg/Library/CrabAppleLib/CrabAppleLib.inf
@@ -87,9 +93,15 @@
 
 [Components]
   #
-  # UFS (U3a: probe only, reads the host controller state)
+  # UFS (U3b): the generic UFSHCI stack takes over the controller the
+  # bootloader left running; UfsPlatformDxe keeps every LUN read-only
   #
   pianoPkg/Drivers/UfsPlatformDxe/UfsPlatformDxe.inf
+  MdeModulePkg/Bus/Pci/NonDiscoverablePciDeviceDxe/NonDiscoverablePciDeviceDxe.inf
+  MdeModulePkg/Bus/Pci/UfsPciHcDxe/UfsPciHcDxe.inf
+  MdeModulePkg/Bus/Ufs/UfsPassThruDxe/UfsPassThruDxe.inf
+  MdeModulePkg/Bus/Scsi/ScsiBusDxe/ScsiBusDxe.inf
+  MdeModulePkg/Bus/Scsi/ScsiDiskDxe/ScsiDiskDxe.inf
 
   #
   # Keys (power, volume) as a SimpleTextIn console
