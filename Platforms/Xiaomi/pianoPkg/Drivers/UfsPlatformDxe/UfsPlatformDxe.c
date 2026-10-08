@@ -36,15 +36,33 @@
 #define UFS_HC_BASE       0x01D84000
 #define UFS_HC_SIZE       0x3000
 
+#define UFS_HC_AHIT       0x18
 #define UFS_HC_IS         0x20
+#define UFS_HC_IE         0x24
 #define UFS_HC_STATUS     0x30
 #define UFS_HC_ENABLE     0x34
+#define UFS_HC_UECPA      0x38
+#define UFS_HC_UECDL      0x3C
+#define UFS_HC_UECN       0x40
+#define UFS_HC_UECT       0x44
+#define UFS_HC_UECDME     0x48
 #define UFS_HC_UTRLBA     0x50
 #define UFS_HC_UTRLBAU    0x54
 #define UFS_HC_UTRLDBR    0x58
 #define UFS_HC_UTRLRSR    0x60
 #define UFS_HC_UTMRLDBR   0x78
 #define UFS_HC_UTMRLRSR   0x80
+#define UFS_HC_UICCMD     0x90
+#define UFS_HC_UICARG1    0x94
+#define UFS_HC_UICARG2    0x98
+#define UFS_HC_UICARG3    0x9C
+
+#define UFS_HC_IS_UHXS          BIT5
+#define UFS_HC_IS_UCCS          BIT10
+#define UIC_DME_HIBER_ENTER     0x17
+#define UIC_DME_HIBER_EXIT      0x18
+#define UPMCRS_PWR_LOCAL        1
+#define UIC_TIMEOUT_US          100000
 
 #define UFS_HC_STATUS_DP        BIT0
 #define UFS_HC_STATUS_UCRDY     BIT3
@@ -81,7 +99,45 @@ STATIC UINT8                            mLastRefusedOpcode;
 STATIC UINTN                            mTracedCommands;
 STATIC UINT32                           mUfsSmr;
 STATIC UINT32                           mUfsS2cr;
+STATIC BOOLEAN                          mTakeoverTried;
 STATIC EFI_HANDLE                       mUfsHandle;
+
+/**
+  Bring the link out of HIBERN8 (the bootloader may park it there).
+**/
+STATIC
+EFI_STATUS
+UicHibernateExit (
+  VOID
+  )
+{
+  UINT32  Is;
+  UINT32  Upmcrs;
+  UINTN   Timeout;
+
+  MmioWrite32 (UFS_HC_BASE + UFS_HC_IS, UFS_HC_IS_UCCS | UFS_HC_IS_UHXS);
+  MmioWrite32 (UFS_HC_BASE + UFS_HC_UICARG1, 0);
+  MmioWrite32 (UFS_HC_BASE + UFS_HC_UICARG2, 0);
+  MmioWrite32 (UFS_HC_BASE + UFS_HC_UICARG3, 0);
+  MmioWrite32 (UFS_HC_BASE + UFS_HC_UICCMD, UIC_DME_HIBER_EXIT);
+
+  Is = 0;
+  for (Timeout = 0; Timeout < UIC_TIMEOUT_US; Timeout++) {
+    Is = MmioRead32 (UFS_HC_BASE + UFS_HC_IS);
+    if ((Is & UFS_HC_IS_UHXS) != 0) {
+      break;
+    }
+
+    MicroSecondDelay (1);
+  }
+
+  Upmcrs = (MmioRead32 (UFS_HC_BASE + UFS_HC_STATUS) >> 8) & 0x7;
+  DEBUG ((DEBUG_WARN, "UfsPlatform: HIBERN8 exit: IS 0x%08x result 0x%02x UPMCRS %u\n",
+          Is, MmioRead32 (UFS_HC_BASE + UFS_HC_UICARG2) & 0xFF, Upmcrs));
+  MmioWrite32 (UFS_HC_BASE + UFS_HC_IS, UFS_HC_IS_UCCS | UFS_HC_IS_UHXS);
+
+  return (((Is & UFS_HC_IS_UHXS) != 0) && (Upmcrs == UPMCRS_PWR_LOCAL)) ? EFI_SUCCESS : EFI_DEVICE_ERROR;
+}
 
 STATIC
 EFI_STATUS
@@ -103,6 +159,13 @@ UfsPlatformCallback (
     return EFI_SUCCESS;
   }
 
+  // One attempt only: a failed takeover is not retried by later connects.
+  if (mTakeoverTried) {
+    return EFI_ALREADY_STARTED;
+  }
+
+  mTakeoverTried = TRUE;
+
   Status = MmioRead32 (UFS_HC_BASE + UFS_HC_STATUS);
   if (((MmioRead32 (UFS_HC_BASE + UFS_HC_ENABLE) & UFS_HC_ENABLE_HCE) == 0) ||
       ((Status & (UFS_HC_STATUS_DP | UFS_HC_STATUS_UCRDY)) != (UFS_HC_STATUS_DP | UFS_HC_STATUS_UCRDY)))
@@ -122,7 +185,19 @@ UfsPlatformCallback (
           MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLBAU), MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLBA)));
   MmioWrite32 (UFS_HC_BASE + UFS_HC_UTRLRSR, 0);
   MmioWrite32 (UFS_HC_BASE + UFS_HC_UTMRLRSR, 0);
+
+  // The last UIC command the bootloader issued tells the link state.
+  DEBUG ((DEBUG_WARN, "UfsPlatform: last UIC 0x%02x args 0x%08x 0x%08x 0x%08x IS 0x%08x IE 0x%08x AHIT 0x%08x\n",
+          MmioRead32 (UFS_HC_BASE + UFS_HC_UICCMD) & 0xFF,
+          MmioRead32 (UFS_HC_BASE + UFS_HC_UICARG1), MmioRead32 (UFS_HC_BASE + UFS_HC_UICARG2),
+          MmioRead32 (UFS_HC_BASE + UFS_HC_UICARG3), MmioRead32 (UFS_HC_BASE + UFS_HC_IS),
+          MmioRead32 (UFS_HC_BASE + UFS_HC_IE), MmioRead32 (UFS_HC_BASE + UFS_HC_AHIT)));
+
   MmioWrite32 (UFS_HC_BASE + UFS_HC_IS, MmioRead32 (UFS_HC_BASE + UFS_HC_IS));
+
+  if ((MmioRead32 (UFS_HC_BASE + UFS_HC_UICCMD) & 0xFF) == UIC_DME_HIBER_ENTER) {
+    return UicHibernateExit ();
+  }
 
   return EFI_SUCCESS;
 }
@@ -308,6 +383,13 @@ ReportDisks (
   }
 
   DEBUG ((DEBUG_WARN, "UfsPlatform: UFS stream SMR 0x%08x S2CR 0x%08x\n", mUfsSmr, mUfsS2cr));
+  DEBUG ((DEBUG_WARN, "UfsPlatform: HCS 0x%08x IS 0x%08x DBR 0x%08x UIC 0x%02x\n",
+          MmioRead32 (UFS_HC_BASE + UFS_HC_STATUS), MmioRead32 (UFS_HC_BASE + UFS_HC_IS),
+          MmioRead32 (UFS_HC_BASE + UFS_HC_UTRLDBR), MmioRead32 (UFS_HC_BASE + UFS_HC_UICCMD) & 0xFF));
+  DEBUG ((DEBUG_WARN, "UfsPlatform: UECPA 0x%08x DL 0x%08x N 0x%08x T 0x%08x DME 0x%08x\n",
+          MmioRead32 (UFS_HC_BASE + UFS_HC_UECPA), MmioRead32 (UFS_HC_BASE + UFS_HC_UECDL),
+          MmioRead32 (UFS_HC_BASE + UFS_HC_UECN), MmioRead32 (UFS_HC_BASE + UFS_HC_UECT),
+          MmioRead32 (UFS_HC_BASE + UFS_HC_UECDME)));
   DEBUG ((DEBUG_WARN, "UfsPlatform: %u GPT/MBR partitions, %u non-read commands refused (last 0x%02x)\n",
           PartCount, mRefusedCommands, mLastRefusedOpcode));
 
